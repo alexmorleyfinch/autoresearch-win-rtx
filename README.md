@@ -18,7 +18,11 @@ By design, training runs for a **fixed 5-minute time budget** (wall clock, exclu
 
 ## Quick start
 
-**Requirements:** A single NVIDIA GPU (tested on H100), Python 3.10+, [uv](https://docs.astral.sh/uv/).
+**Requirements:** A single NVIDIA GPU, Python 3.10+, [uv](https://docs.astral.sh/uv/).
+
+- Linux fast path (FA3 + `torch.compile` when available) remains supported.
+- Native Windows support targets consumer GPUs (e.g. RTX 3080 10 GB) with official PyTorch CUDA wheels and SDPA fallback.
+- Default dataset is now TinyStories GPT-4 clean for practical consumer-GPU setup.
 
 ```bash
 
@@ -28,11 +32,40 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # 2. Install dependencies
 uv sync
 
-# 3. Download data and train tokenizer (one-time, ~2 min)
+# 3. Download data and train tokenizer (one-time)
+#    Default dataset: TinyStories GPT-4 clean
 uv run prepare.py
 
 # 4. Manually run a single training experiment (~5 min)
 uv run train.py
+```
+
+Use climbmix explicitly if you want the old large-dataset workflow:
+
+```bash
+uv run prepare.py --dataset climbmix --num-shards 10
+```
+
+Quick validation run (recommended after setup):
+
+```bash
+uv run train.py --smoke-test
+```
+
+### Windows setup (PowerShell)
+
+```powershell
+# 1. Install uv
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# 2. Install dependencies
+uv sync
+
+# 3. Prepare TinyStories + tokenizer
+uv run prepare.py
+
+# 4. Smoke test
+uv run train.py --smoke-test
 ```
 
 If the above commands all work ok, your setup is working and you can go into autonomous research mode.
@@ -64,9 +97,14 @@ pyproject.toml  — dependencies
 
 ## Platform support
 
-This code currently requires that you have a single NVIDIA GPU. In principle it is quite possible to support CPU, MPS and other platforms but this would also bloat the code. I'm not 100% sure that I want to take this on personally right now. People can reference (or have their agents reference) the full/parent nanochat repository that has wider platform support and shows the various solutions (e.g. a Flash Attention 3 kernels fallback implementation, generic device support, autodetection, etc.), feel free to create forks or discussions for other platforms and I'm happy to link to them here in the README in some new notable forks section or etc.
+Autoresearch still targets a single NVIDIA GPU, but now supports both:
 
-If you're going to be using autoresearch on Apple Macbooks in particular, I'd recommend one of the forks below. On top of this, if you'd like half-decent results at such a small scale, I'd recommend this [TinyStories dataset](https://huggingface.co/datasets/karpathy/tinystories-gpt4-clean) which is cleaner than what exists out there otherwise. It should be a drop in replacement because I have encoded it in exactly the same format. Any of your favorite coding agents should be able to do the swap :)
+- Linux CUDA (keeps FA3/compile fast path when available)
+- Native Windows CUDA (official PyTorch wheel path, SDPA backend, compile disabled by default)
+
+For consumer cards, TinyStories is now the default dataset profile because it is much lighter to prepare and iterate on than climbmix.
+
+Important: changing datasets resets metric comparability. Results produced on TinyStories should not be directly compared against older climbmix runs.
 
 ## Notable forks
 
