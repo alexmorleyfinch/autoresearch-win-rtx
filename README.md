@@ -1,6 +1,8 @@
 # autoresearch
 
-> This repository is a fork of [karpathy/autoresearch](https://github.com/karpathy/autoresearch). The sole purpose of this fork is native support for NVIDIA RTX 3080 (10 GB) GPUs on Windows machines.
+> Convert your gaming PC into an autonomous AI researcher.
+
+> This repository is a fork of [karpathy/autoresearch](https://github.com/karpathy/autoresearch). The purpose of this fork is native support for desktop consumer NVIDIA GPUs with at least 10 GB VRAM on Windows, while keeping Linux compatibility paths.
 
 ![teaser](progress.png)
 
@@ -11,32 +13,32 @@ The idea: give an AI agent a small but real LLM training setup and let it experi
 ## Fork scope
 
 - Upstream source: [karpathy/autoresearch](https://github.com/karpathy/autoresearch)
-- Primary objective: run natively on Windows with consumer NVIDIA GPUs, specifically RTX 3080 (10 GB), without unofficial Triton-on-Windows stacks.
+- Primary objective: run natively on Windows with desktop consumer NVIDIA GPUs that have at least 10 GB VRAM, without unofficial Triton-on-Windows stacks.
 - Scope of changes: compatibility and stability updates required for that target platform.
-- Linux/H100-oriented fast paths are kept where practical, but they are not the focus of this fork.
+- Linux/H100-oriented fast paths are removed in this fork to keep the runtime path simple and consumer-focused.
 
 ## How it works
 
 The repo is deliberately kept small and only really has a three files that matter:
 
-- **`prepare.py`** — fixed constants, one-time data prep (downloads training data, trains a BPE tokenizer), and runtime utilities (dataloader, evaluation). Not modified.
+- **`prepare.py`** — fixed constants, one-time data prep (downloads TinyStories data, trains a BPE tokenizer), and runtime utilities (dataloader, evaluation).
 - **`train.py`** — the single file the agent edits. Contains the full GPT model, optimizer (Muon + AdamW), and training loop. Everything is fair game: architecture, hyperparameters, optimizer, batch size, etc. **This file is edited and iterated on by the agent**.
 - **`program.md`** — baseline instructions for one agent. Point your agent here and let it go. **This file is edited and iterated on by the human**.
 
 By design, training runs for a **fixed 5-minute time budget** (wall clock, excluding startup/compilation), regardless of the details of your compute. The metric is **val_bpb** (validation bits per byte) — lower is better, and vocab-size-independent so architectural changes are fairly compared.
 
-## Quick start
+## Quick start (PowerShell)
 
 **Requirements:** A single NVIDIA GPU, Python 3.10+, [uv](https://docs.astral.sh/uv/).
 
-- Linux fast path (FA3 + `torch.compile` when available) remains supported.
-- Native Windows support targets consumer GPUs (e.g. RTX 3080 10 GB) with official PyTorch CUDA wheels and SDPA fallback.
+- Single runtime path uses PyTorch SDPA attention and eager execution (no FA3/`torch.compile` fast path).
+- Native Windows support targets desktop consumer GPUs with >=10 GB VRAM, official PyTorch CUDA wheels, and SDPA attention.
 - Default dataset is now TinyStories GPT-4 clean for practical consumer-GPU setup.
 
-```bash
+```powershell
 
 # 1. Install uv project manager (if you don't already have it)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 
 # 2. Install dependencies
 uv sync
@@ -49,31 +51,9 @@ uv run prepare.py
 uv run train.py
 ```
 
-Use climbmix explicitly if you want the old large-dataset workflow:
-
-```bash
-uv run prepare.py --dataset climbmix --num-shards 10
-```
-
 Quick validation run (recommended after setup):
 
-```bash
-uv run train.py --smoke-test
-```
-
-### Windows setup (PowerShell)
-
 ```powershell
-# 1. Install uv
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# 2. Install dependencies
-uv sync
-
-# 3. Prepare TinyStories + tokenizer
-uv run prepare.py
-
-# 4. Smoke test
 uv run train.py --smoke-test
 ```
 
@@ -106,16 +86,20 @@ pyproject.toml  — dependencies
 
 ## Platform support
 
-This fork's platform policy is intentionally narrow and explicit.
+This fork's platform policy is explicit and tiered.
 
-- Primary supported platform is Windows 10/11 with a single NVIDIA RTX 3080 (10 GB) using official PyTorch CUDA wheels.
-- Windows runtime path uses PyTorch SDPA attention, avoids a hard dependency on Linux-centric HF `kernels`, and keeps `torch.compile` disabled by default.
-- Memory behavior is tuned for 10 GB-class cards so training can continue through OOM pressure using fallback logic.
-- Linux CUDA remains supported as a compatibility path and can still use FA3 plus `torch.compile` fast paths when available.
-- Non-goals for this fork include unofficial Triton-for-Windows setups, AMD/ROCm, Apple Metal, and multi-GPU training.
-- Default dataset is `karpathy/tinystories-gpt4-clean` for consumer-GPU practicality.
-- `climbmix` remains available by explicit override (`uv run prepare.py --dataset climbmix --num-shards 10`).
-- Dataset changes reset metric comparability: TinyStories runs should not be compared directly to historical climbmix baselines.
+- Supported desktop consumer GPUs (Ampere): `RTX 3060 12GB`, `RTX 3080 10GB`, `RTX 3080 12GB`, `RTX 3080 Ti 12GB`, `RTX 3090 24GB`, `RTX 3090 Ti 24GB`.
+- Supported desktop consumer GPUs (Ada): `RTX 4060 Ti 16GB`, `RTX 4070 12GB`, `RTX 4070 SUPER 12GB`, `RTX 4070 Ti 12GB`, `RTX 4070 Ti SUPER 16GB`, `RTX 4080 16GB`, `RTX 4080 SUPER 16GB`, `RTX 4090 24GB`.
+- Supported desktop consumer GPUs (Blackwell): `RTX 5060 Ti 16GB`, `RTX 5070 12GB`, `RTX 5070 Ti 16GB`, `RTX 5080 16GB`, `RTX 5090 32GB`.
+- Desktop only: laptop GPUs are not officially supported due to wide power and thermal variance.
+- 8 GB variants are explicitly out of matrix support, even when the model family name matches a supported desktop SKU.
+- Runtime path is intentionally unified across platforms: PyTorch SDPA attention + eager optimizer steps.
+- Runtime adaptation is profile-driven: compute capability, BF16/TF32 support, OS, and VRAM tier determine candidate batch sizes and checkpointing strategy.
+- Supported consumer profiles run a short eager-mode autotune pass and cache the selected candidate per GPU/runtime fingerprint.
+- Autotune env controls: `AUTORESEARCH_DISABLE_AUTOTUNE=1` skips probing; `AUTORESEARCH_AUTOTUNE_REFRESH=1` refreshes the cached decision.
+- Tested hardware in this repo remains RTX 3080 10 GB on Windows. Other listed SKUs are matrix-supported but may be less field-tested here.
+- Non-goals for this fork include FA3/H100-specialized paths, unofficial Triton-for-Windows stacks, AMD/ROCm, Apple Metal, and multi-GPU training.
+- Default dataset is `karpathy/tinystories_gpt4_clean` for consumer-GPU practicality.
 
 ## Notable forks
 

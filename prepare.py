@@ -4,7 +4,6 @@ Downloads data and trains a BPE tokenizer.
 
 Usage:
     python prepare.py
-    python prepare.py --dataset climbmix --num-shards 8
 
 Data and tokenizer are stored in the cache directory (overridable with
 AUTORESEARCH_CACHE_DIR). The active dataset can be pinned with
@@ -15,9 +14,8 @@ import argparse
 import math
 import os
 import pickle
-import sys
+import shutil
 import time
-from multiprocessing import Pool
 
 import pyarrow.parquet as pq
 import requests
@@ -45,7 +43,7 @@ BOS_TOKEN = "<|reserved_0|>"
 # ---------------------------------------------------------------------------
 
 DEFAULT_DATASET = "tinystories"
-DATASET_CHOICES = ("tinystories", "climbmix")
+DATASET_CHOICES = ("tinystories",)
 
 
 def _default_cache_dir():
@@ -72,18 +70,13 @@ ACTIVE_DATASET_PATH = os.path.join(CACHE_DIR, "active_dataset.txt")
 
 DATASET_CONFIGS = {
     "tinystories": {
-        "filename": "tinystories_gpt4-clean.parquet",
-        "url": "https://huggingface.co/datasets/karpathy/tinystories-gpt4-clean/resolve/main/tinystories_gpt4-clean.parquet",
+        "filename": "tinystories_gpt4_clean.parquet",
+        "url": "https://huggingface.co/datasets/karpathy/tinystories-gpt4-clean/resolve/main/tinystories_gpt4_clean.parquet",
         "splits": {
             "test": (0, 10_000),
             "val": (10_000, 20_000),
             "train": (20_000, None),
         },
-    },
-    "climbmix": {
-        "base_url": "https://huggingface.co/datasets/karpathy/climbmix-400b-shuffle/resolve/main",
-        "max_shard": 6542,
-        "val_shard": 6542,
     },
 }
 
@@ -112,7 +105,15 @@ def _resolve_dataset_name(dataset_name=None):
     if normalized is not None:
         return normalized
 
-    env_dataset = _normalize_dataset_name(os.environ.get("AUTORESEARCH_DATASET"))
+    env_value = os.environ.get("AUTORESEARCH_DATASET")
+    try:
+        env_dataset = _normalize_dataset_name(env_value)
+    except ValueError:
+        print(
+            f"Warning: ignoring unsupported AUTORESEARCH_DATASET={env_value!r}; "
+            f"using '{DEFAULT_DATASET}'."
+        )
+        env_dataset = None
     if env_dataset is not None:
         return env_dataset
 
@@ -148,42 +149,45 @@ def _tiny_parquet_path(dataset_name=None):
     return os.path.join(_data_dir(dataset), config["filename"])
 
 
-# ---------------------------------------------------------------------------
-# Data download
-# ---------------------------------------------------------------------------
+def _tiny_legacy_parquet_paths(dataset_name=None):
+    dataset = _resolve_dataset_name(dataset_name)
+    data_dir = _data_dir(dataset)
+    legacy_flat_data_dir = os.path.join(CACHE_DIR, "data")
+    return (
+        os.path.join(data_dir, "tinystories_gpt4-clean.parquet"),
+        os.path.join(legacy_flat_data_dir, "tinystories_gpt4_clean.parquet"),
+        os.path.join(legacy_flat_data_dir, "tinystories_gpt4-clean.parquet"),
+    )
 
-def _download_climbmix_single_shard(task):
-    index, data_dir, base_url = task
-    filename = f"shard_{index:05d}.parquet"
-    filepath = os.path.join(data_dir, filename)
-    if os.path.exists(filepath):
-        return True
 
-    url = f"{base_url}/{filename}"
-    max_attempts = 5
-    for attempt in range(1, max_attempts + 1):
+def _resolve_tiny_parquet_for_read(dataset_name=None):
+    dataset = _resolve_dataset_name(dataset_name)
+    data_dir = _data_dir(dataset)
+    current_path = _tiny_parquet_path(dataset)
+    if os.path.exists(current_path):
+        return current_path
+
+    for legacy_path in _tiny_legacy_parquet_paths(dataset):
+        if not os.path.exists(legacy_path):
+            continue
+        os.makedirs(data_dir, exist_ok=True)
         try:
-            response = requests.get(url, stream=True, timeout=30)
-            response.raise_for_status()
-            temp_path = filepath + ".tmp"
-            with open(temp_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        f.write(chunk)
-            os.rename(temp_path, filepath)
-            print(f"  Downloaded {filename}")
-            return True
-        except (requests.RequestException, OSError) as exc:
-            print(f"  Attempt {attempt}/{max_attempts} failed for {filename}: {exc}")
-            for path in (temp_path if "temp_path" in locals() else filepath + ".tmp", filepath):
-                if os.path.exists(path):
-                    try:
-                        os.remove(path)
-                    except OSError:
-                        pass
-            if attempt < max_attempts:
-                time.sleep(2 ** attempt)
-    return False
+            os.replace(legacy_path, current_path)
+            print(f"Data: migrated legacy TinyStories parquet to {current_path}")
+            return current_path
+        except OSError:
+            try:
+                shutil.copy2(legacy_path, current_path)
+                print(f"Data: copied legacy TinyStories parquet to {current_path}")
+                return current_path
+            except OSError:
+                return legacy_path
+    return current_path
+
+
+# ---------------------------------------------------------------------------
+# Data download (TinyStories only)
+# ---------------------------------------------------------------------------
 
 
 def _download_tinystories_file(dataset_name):
@@ -193,8 +197,9 @@ def _download_tinystories_file(dataset_name):
 
     filename = config["filename"]
     filepath = os.path.join(data_dir, filename)
-    if os.path.exists(filepath):
-        print(f"Data: {filename} already downloaded at {data_dir}")
+    resolved_existing_path = _resolve_tiny_parquet_for_read(dataset_name)
+    if os.path.exists(resolved_existing_path):
+        print(f"Data: {filename} already downloaded at {resolved_existing_path}")
         return
 
     url = config["url"]
@@ -210,45 +215,9 @@ def _download_tinystories_file(dataset_name):
     print(f"Data: downloaded {filename} to {filepath}")
 
 
-def _download_climbmix_data(dataset_name, num_shards, download_workers):
-    config = DATASET_CONFIGS[dataset_name]
-    data_dir = _data_dir(dataset_name)
-    os.makedirs(data_dir, exist_ok=True)
-
-    max_shard = config["max_shard"]
-    val_shard = config["val_shard"]
-    base_url = config["base_url"]
-
-    num_train = min(num_shards, max_shard)
-    shard_ids = list(range(num_train))
-    if val_shard not in shard_ids:
-        shard_ids.append(val_shard)
-
-    existing = sum(
-        1
-        for shard_idx in shard_ids
-        if os.path.exists(os.path.join(data_dir, f"shard_{shard_idx:05d}.parquet"))
-    )
-    if existing == len(shard_ids):
-        print(f"Data: all {len(shard_ids)} shards already downloaded at {data_dir}")
-        return
-
-    needed = len(shard_ids) - existing
-    print(f"Data: downloading {needed} shards ({existing} already exist)...")
-    workers = max(1, min(download_workers, needed))
-    tasks = [(idx, data_dir, base_url) for idx in shard_ids]
-    with Pool(processes=workers) as pool:
-        results = pool.map(_download_climbmix_single_shard, tasks)
-    ready = sum(1 for ok in results if ok)
-    print(f"Data: {ready}/{len(shard_ids)} shards ready at {data_dir}")
-
-
-def download_data(dataset_name, num_shards, download_workers=8):
+def download_data(dataset_name):
     dataset = _resolve_dataset_name(dataset_name)
-    if dataset == "tinystories":
-        _download_tinystories_file(dataset)
-        return
-    _download_climbmix_data(dataset, num_shards=num_shards, download_workers=download_workers)
+    _download_tinystories_file(dataset)
 
 
 # ---------------------------------------------------------------------------
@@ -258,20 +227,26 @@ def download_data(dataset_name, num_shards, download_workers=8):
 def list_parquet_files(dataset_name=None):
     dataset = _resolve_dataset_name(dataset_name)
     data_dir = _data_dir(dataset)
-    if not os.path.exists(data_dir):
-        return []
-    files = sorted(
-        name for name in os.listdir(data_dir)
-        if name.endswith(".parquet") and not name.endswith(".tmp")
-    )
-    return [os.path.join(data_dir, name) for name in files]
+    files = []
+    if os.path.exists(data_dir):
+        files = sorted(
+            name for name in os.listdir(data_dir)
+            if name.endswith(".parquet") and not name.endswith(".tmp")
+        )
+    if files:
+        return [os.path.join(data_dir, name) for name in files]
+    if dataset == "tinystories":
+        tiny_path = _resolve_tiny_parquet_for_read(dataset)
+        if os.path.exists(tiny_path):
+            return [tiny_path]
+    return []
 
 
 def _iter_tinystories_texts(split, dataset_name=None):
     dataset = _resolve_dataset_name(dataset_name)
     config = DATASET_CONFIGS[dataset]
     start_idx, end_idx = config["splits"][split]
-    tiny_path = _tiny_parquet_path(dataset)
+    tiny_path = _resolve_tiny_parquet_for_read(dataset)
 
     if not os.path.exists(tiny_path):
         raise FileNotFoundError(
@@ -297,29 +272,13 @@ def text_iterator(dataset_name=None, max_chars=1_000_000_000, doc_cap=10_000):
     dataset = _resolve_dataset_name(dataset_name)
     chars = 0
 
-    if dataset == "tinystories":
-        text_iter = _iter_tinystories_texts("train", dataset_name=dataset)
-        for text in text_iter:
-            doc = text[:doc_cap] if len(text) > doc_cap else text
-            chars += len(doc)
-            yield doc
-            if chars >= max_chars:
-                return
-        return
-
-    config = DATASET_CONFIGS[dataset]
-    val_filename = f"shard_{config['val_shard']:05d}.parquet"
-    parquet_paths = [p for p in list_parquet_files(dataset) if not p.endswith(val_filename)]
-    for filepath in parquet_paths:
-        parquet_file = pq.ParquetFile(filepath)
-        for row_group_idx in range(parquet_file.num_row_groups):
-            row_group = parquet_file.read_row_group(row_group_idx, columns=["text"])
-            for text in row_group.column("text").to_pylist():
-                doc = text[:doc_cap] if len(text) > doc_cap else text
-                chars += len(doc)
-                yield doc
-                if chars >= max_chars:
-                    return
+    text_iter = _iter_tinystories_texts("train", dataset_name=dataset)
+    for text in text_iter:
+        doc = text[:doc_cap] if len(text) > doc_cap else text
+        chars += len(doc)
+        yield doc
+        if chars >= max_chars:
+            return
 
 
 def train_tokenizer(dataset_name=None):
@@ -335,12 +294,9 @@ def train_tokenizer(dataset_name=None):
     os.makedirs(tokenizer_dir, exist_ok=True)
 
     parquet_files = list_parquet_files(dataset)
-    if dataset == "climbmix" and len(parquet_files) < 2:
-        print("Tokenizer: climbmix needs at least 2 shards (1 train + 1 val).")
-        sys.exit(1)
-    if dataset == "tinystories" and len(parquet_files) < 1:
+    if len(parquet_files) < 1:
         print("Tokenizer: TinyStories parquet is missing. Run prepare.py first.")
-        sys.exit(1)
+        raise RuntimeError("TinyStories parquet is missing.")
 
     print(f"Tokenizer: training BPE tokenizer ({dataset})...")
     t0 = time.time()
@@ -449,42 +405,16 @@ def _document_batches(split, dataset=None, tokenizer_batch_size=128):
     dataset_name = _resolve_dataset_name(dataset)
     assert split in ("train", "val", "test")
 
-    if dataset_name == "tinystories":
-        epoch = 1
-        while True:
-            batch = []
-            for text in _iter_tinystories_texts(split, dataset_name=dataset_name):
-                batch.append(text)
-                if len(batch) >= tokenizer_batch_size:
-                    yield batch, epoch
-                    batch = []
-            if batch:
-                yield batch, epoch
-            epoch += 1
-        return
-
-    config = DATASET_CONFIGS[dataset_name]
-    parquet_paths = list_parquet_files(dataset_name)
-    assert len(parquet_paths) > 0, "No parquet files found. Run prepare.py first."
-
-    val_filename = f"shard_{config['val_shard']:05d}.parquet"
-    val_path = os.path.join(_data_dir(dataset_name), val_filename)
-    if split == "train":
-        parquet_paths = [p for p in parquet_paths if p != val_path]
-    elif split == "val":
-        parquet_paths = [val_path]
-    else:
-        raise ValueError("climbmix does not define a test split")
-
     epoch = 1
     while True:
-        for filepath in parquet_paths:
-            parquet_file = pq.ParquetFile(filepath)
-            for row_group_idx in range(parquet_file.num_row_groups):
-                row_group = parquet_file.read_row_group(row_group_idx, columns=["text"])
-                batch = row_group.column("text").to_pylist()
-                for i in range(0, len(batch), tokenizer_batch_size):
-                    yield batch[i:i + tokenizer_batch_size], epoch
+        batch = []
+        for text in _iter_tinystories_texts(split, dataset_name=dataset_name):
+            batch.append(text)
+            if len(batch) >= tokenizer_batch_size:
+                yield batch, epoch
+                batch = []
+        if batch:
+            yield batch, epoch
         epoch += 1
 
 
@@ -615,28 +545,15 @@ if __name__ == "__main__":
             "AUTORESEARCH_DATASET, active_dataset.txt, then default tinystories."
         ),
     )
-    parser.add_argument(
-        "--num-shards",
-        type=int,
-        default=10,
-        help="Number of climbmix training shards to download (-1 = all). Ignored for TinyStories.",
-    )
-    parser.add_argument(
-        "--download-workers",
-        type=int,
-        default=8,
-        help="Number of parallel download workers for climbmix.",
-    )
     args = parser.parse_args()
 
     dataset_name = _resolve_dataset_name(args.dataset)
-    num_shards = DATASET_CONFIGS["climbmix"]["max_shard"] if args.num_shards == -1 else args.num_shards
 
     print(f"Cache directory: {CACHE_DIR}")
     print(f"Dataset: {dataset_name}")
     print()
 
-    download_data(dataset_name, num_shards=num_shards, download_workers=args.download_workers)
+    download_data(dataset_name)
     print()
     train_tokenizer(dataset_name)
     _set_active_dataset(dataset_name)
