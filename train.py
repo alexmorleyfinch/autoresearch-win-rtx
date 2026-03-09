@@ -105,6 +105,8 @@ def _get_gpu_peak_flops(gpu_name):
         ("2080", 80.3e12),
         ("2070 super", 72.6e12),
         ("2070", 59.7e12),
+        ("2060 super", 57.4e12),
+        ("2060", 52.4e12),
         ("3090 ti", 160.0e12),
         ("3090", 142.6e12),
         ("3080 ti", 136.0e12),
@@ -127,7 +129,7 @@ def _resolve_gpu_profile(gpu_name, capability, gpu_vram_gb, is_windows):
     supported_consumer = is_rtx and not is_laptop and arch is not None and gpu_vram_gb >= min_vram_gb
 
     if supported_consumer:
-        if gpu_vram_gb < 12.0:
+        if arch == "turing" and gpu_vram_gb < 12.0:
             return GpuProfile(
                 name=f"{arch}-8-11gb",
                 is_supported_consumer=True,
@@ -138,8 +140,9 @@ def _resolve_gpu_profile(gpu_name, capability, gpu_vram_gb, is_windows):
                 eval_batch_cap=4,
             )
         if gpu_vram_gb < 16.0:
+            mid_tier_name = f"{arch}-12-15gb" if arch == "turing" else f"{arch}-10-15gb"
             return GpuProfile(
-                name=f"{arch}-12-15gb",
+                name=mid_tier_name,
                 is_supported_consumer=True,
                 is_compatibility_only=False,
                 train_batch_candidates=(16, 8, 4),
