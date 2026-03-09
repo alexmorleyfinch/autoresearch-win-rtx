@@ -77,20 +77,21 @@ AUTOTUNE_CACHE_VERSION = "gpu-profile-v1"
 
 def _get_gpu_peak_flops(gpu_name):
     name = gpu_name.lower()
-    lookup = {
-        "5090": 360.0e12,
-        "4090": 330.3e12,
-        "5080": 280.0e12,
-        "4080": 242.5e12,
-        "5070 ti": 190.0e12,
-        "5070": 150.0e12,
-        "5060 ti": 120.0e12,
-        "4090d": 280.0e12,
-        "3090": 142.6e12,
-        "3080": 119.5e12,
-        "3070": 81.1e12,
-    }
-    for key, flops in lookup.items():
+    lookup = (
+        ("5090", 360.0e12),
+        ("4090 d", 280.0e12),
+        ("4090d", 280.0e12),
+        ("4090", 330.3e12),
+        ("5080", 280.0e12),
+        ("4080", 242.5e12),
+        ("5070 ti", 190.0e12),
+        ("5070", 150.0e12),
+        ("5060 ti", 120.0e12),
+        ("3090", 142.6e12),
+        ("3080", 119.5e12),
+        ("3070", 81.1e12),
+    )
+    for key, flops in lookup:
         if key in name:
             return flops
     return None
@@ -144,15 +145,16 @@ def _resolve_gpu_profile(gpu_name, capability, gpu_vram_gb, is_windows):
 
 def _compatibility_warning(gpu_name, capability, gpu_vram_gb):
     name = gpu_name.lower()
+    arch = SUPPORTED_CONSUMER_CAPABILITIES.get(capability)
     if "rtx" not in name:
         return None
     if "laptop" in name:
         return "laptop GPUs are outside the supported desktop matrix"
-    if capability not in SUPPORTED_CONSUMER_CAPABILITIES:
+    if arch is None:
         return f"compute capability {capability[0]}.{capability[1]} is outside supported consumer tiers"
     if gpu_vram_gb < 10.0:
         return f"{gpu_vram_gb:.1f} GB VRAM is below the 10 GB floor"
-    return "not in the explicit supported desktop matrix"
+    return None
 
 
 def _get_autotune_cache_path():

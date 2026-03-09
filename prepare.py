@@ -14,6 +14,7 @@ import argparse
 import math
 import os
 import pickle
+import shutil
 import time
 
 import pyarrow.parquet as pq
@@ -70,7 +71,7 @@ ACTIVE_DATASET_PATH = os.path.join(CACHE_DIR, "active_dataset.txt")
 DATASET_CONFIGS = {
     "tinystories": {
         "filename": "tinystories_gpt4_clean.parquet",
-        "url": "https://huggingface.co/datasets/karpathy/tinystories_gpt4_clean/resolve/main/tinystories_gpt4_clean.parquet",
+        "url": "https://huggingface.co/datasets/karpathy/tinystories-gpt4-clean/resolve/main/tinystories_gpt4_clean.parquet",
         "splits": {
             "test": (0, 10_000),
             "val": (10_000, 20_000),
@@ -148,6 +149,42 @@ def _tiny_parquet_path(dataset_name=None):
     return os.path.join(_data_dir(dataset), config["filename"])
 
 
+def _tiny_legacy_parquet_paths(dataset_name=None):
+    dataset = _resolve_dataset_name(dataset_name)
+    data_dir = _data_dir(dataset)
+    legacy_flat_data_dir = os.path.join(CACHE_DIR, "data")
+    return (
+        os.path.join(data_dir, "tinystories_gpt4-clean.parquet"),
+        os.path.join(legacy_flat_data_dir, "tinystories_gpt4_clean.parquet"),
+        os.path.join(legacy_flat_data_dir, "tinystories_gpt4-clean.parquet"),
+    )
+
+
+def _resolve_tiny_parquet_for_read(dataset_name=None):
+    dataset = _resolve_dataset_name(dataset_name)
+    data_dir = _data_dir(dataset)
+    current_path = _tiny_parquet_path(dataset)
+    if os.path.exists(current_path):
+        return current_path
+
+    for legacy_path in _tiny_legacy_parquet_paths(dataset):
+        if not os.path.exists(legacy_path):
+            continue
+        os.makedirs(data_dir, exist_ok=True)
+        try:
+            os.replace(legacy_path, current_path)
+            print(f"Data: migrated legacy TinyStories parquet to {current_path}")
+            return current_path
+        except OSError:
+            try:
+                shutil.copy2(legacy_path, current_path)
+                print(f"Data: copied legacy TinyStories parquet to {current_path}")
+                return current_path
+            except OSError:
+                return legacy_path
+    return current_path
+
+
 # ---------------------------------------------------------------------------
 # Data download (TinyStories only)
 # ---------------------------------------------------------------------------
@@ -160,12 +197,9 @@ def _download_tinystories_file(dataset_name):
 
     filename = config["filename"]
     filepath = os.path.join(data_dir, filename)
-    legacy_path = os.path.join(data_dir, "tinystories_gpt4-clean.parquet")
-    if not os.path.exists(filepath) and os.path.exists(legacy_path):
-        os.rename(legacy_path, filepath)
-        print(f"Data: migrated legacy filename to {filename}")
-    if os.path.exists(filepath):
-        print(f"Data: {filename} already downloaded at {data_dir}")
+    resolved_existing_path = _resolve_tiny_parquet_for_read(dataset_name)
+    if os.path.exists(resolved_existing_path):
+        print(f"Data: {filename} already downloaded at {resolved_existing_path}")
         return
 
     url = config["url"]
@@ -193,20 +227,26 @@ def download_data(dataset_name):
 def list_parquet_files(dataset_name=None):
     dataset = _resolve_dataset_name(dataset_name)
     data_dir = _data_dir(dataset)
-    if not os.path.exists(data_dir):
-        return []
-    files = sorted(
-        name for name in os.listdir(data_dir)
-        if name.endswith(".parquet") and not name.endswith(".tmp")
-    )
-    return [os.path.join(data_dir, name) for name in files]
+    files = []
+    if os.path.exists(data_dir):
+        files = sorted(
+            name for name in os.listdir(data_dir)
+            if name.endswith(".parquet") and not name.endswith(".tmp")
+        )
+    if files:
+        return [os.path.join(data_dir, name) for name in files]
+    if dataset == "tinystories":
+        tiny_path = _resolve_tiny_parquet_for_read(dataset)
+        if os.path.exists(tiny_path):
+            return [tiny_path]
+    return []
 
 
 def _iter_tinystories_texts(split, dataset_name=None):
     dataset = _resolve_dataset_name(dataset_name)
     config = DATASET_CONFIGS[dataset]
     start_idx, end_idx = config["splits"][split]
-    tiny_path = _tiny_parquet_path(dataset)
+    tiny_path = _resolve_tiny_parquet_for_read(dataset)
 
     if not os.path.exists(tiny_path):
         raise FileNotFoundError(
