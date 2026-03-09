@@ -1,10 +1,19 @@
 # autoresearch
 
+> This repository is a fork of [karpathy/autoresearch](https://github.com/karpathy/autoresearch). The sole purpose of this fork is native support for NVIDIA RTX 3080 (10 GB) GPUs on Windows machines.
+
 ![teaser](progress.png)
 
 *One day, frontier AI research used to be done by meat computers in between eating, sleeping, having other fun, and synchronizing once in a while using sound wave interconnect in the ritual of "group meeting". That era is long gone. Research is now entirely the domain of autonomous swarms of AI agents running across compute cluster megastructures in the skies. The agents claim that we are now in the 10,205th generation of the code base, in any case no one could tell if that's right or wrong as the "code" is now a self-modifying binary that has grown beyond human comprehension. This repo is the story of how it all began. -@karpathy, March 2026*.
 
 The idea: give an AI agent a small but real LLM training setup and let it experiment autonomously overnight. It modifies the code, trains for 5 minutes, checks if the result improved, keeps or discards, and repeats. You wake up in the morning to a log of experiments and (hopefully) a better model. The training code here is a simplified single-GPU implementation of [nanochat](https://github.com/karpathy/nanochat). The core idea is that you're not touching any of the Python files like you normally would as a researcher. Instead, you are programming the `program.md` Markdown files that provide context to the AI agents and set up your autonomous research org. The default `program.md` in this repo is intentionally kept as a bare bones baseline, though it's obvious how one would iterate on it over time to find the "research org code" that achieves the fastest research progress, how you'd add more agents to the mix, etc. A bit more context on this project is here in this [tweet](https://x.com/karpathy/status/2029701092347630069).
+
+## Fork scope
+
+- Upstream source: [karpathy/autoresearch](https://github.com/karpathy/autoresearch)
+- Primary objective: run natively on Windows with consumer NVIDIA GPUs, specifically RTX 3080 (10 GB), without unofficial Triton-on-Windows stacks.
+- Scope of changes: compatibility and stability updates required for that target platform.
+- Linux/H100-oriented fast paths are kept where practical, but they are not the focus of this fork.
 
 ## How it works
 
@@ -18,7 +27,11 @@ By design, training runs for a **fixed 5-minute time budget** (wall clock, exclu
 
 ## Quick start
 
-**Requirements:** A single NVIDIA GPU (tested on H100), Python 3.10+, [uv](https://docs.astral.sh/uv/).
+**Requirements:** A single NVIDIA GPU, Python 3.10+, [uv](https://docs.astral.sh/uv/).
+
+- Linux fast path (FA3 + `torch.compile` when available) remains supported.
+- Native Windows support targets consumer GPUs (e.g. RTX 3080 10 GB) with official PyTorch CUDA wheels and SDPA fallback.
+- Default dataset is now TinyStories GPT-4 clean for practical consumer-GPU setup.
 
 ```bash
 
@@ -28,11 +41,40 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # 2. Install dependencies
 uv sync
 
-# 3. Download data and train tokenizer (one-time, ~2 min)
+# 3. Download data and train tokenizer (one-time)
+#    Default dataset: TinyStories GPT-4 clean
 uv run prepare.py
 
 # 4. Manually run a single training experiment (~5 min)
 uv run train.py
+```
+
+Use climbmix explicitly if you want the old large-dataset workflow:
+
+```bash
+uv run prepare.py --dataset climbmix --num-shards 10
+```
+
+Quick validation run (recommended after setup):
+
+```bash
+uv run train.py --smoke-test
+```
+
+### Windows setup (PowerShell)
+
+```powershell
+# 1. Install uv
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# 2. Install dependencies
+uv sync
+
+# 3. Prepare TinyStories + tokenizer
+uv run prepare.py
+
+# 4. Smoke test
+uv run train.py --smoke-test
 ```
 
 If the above commands all work ok, your setup is working and you can go into autonomous research mode.
@@ -64,9 +106,16 @@ pyproject.toml  — dependencies
 
 ## Platform support
 
-This code currently requires that you have a single NVIDIA GPU. In principle it is quite possible to support CPU, MPS and other platforms but this would also bloat the code. I'm not 100% sure that I want to take this on personally right now. People can reference (or have their agents reference) the full/parent nanochat repository that has wider platform support and shows the various solutions (e.g. a Flash Attention 3 kernels fallback implementation, generic device support, autodetection, etc.), feel free to create forks or discussions for other platforms and I'm happy to link to them here in the README in some new notable forks section or etc.
+This fork's platform policy is intentionally narrow and explicit.
 
-If you're going to be using autoresearch on Apple Macbooks in particular, I'd recommend one of the forks below. On top of this, if you'd like half-decent results at such a small scale, I'd recommend this [TinyStories dataset](https://huggingface.co/datasets/karpathy/tinystories-gpt4-clean) which is cleaner than what exists out there otherwise. It should be a drop in replacement because I have encoded it in exactly the same format. Any of your favorite coding agents should be able to do the swap :)
+- Primary supported platform is Windows 10/11 with a single NVIDIA RTX 3080 (10 GB) using official PyTorch CUDA wheels.
+- Windows runtime path uses PyTorch SDPA attention, avoids a hard dependency on Linux-centric HF `kernels`, and keeps `torch.compile` disabled by default.
+- Memory behavior is tuned for 10 GB-class cards so training can continue through OOM pressure using fallback logic.
+- Linux CUDA remains supported as a compatibility path and can still use FA3 plus `torch.compile` fast paths when available.
+- Non-goals for this fork include unofficial Triton-for-Windows setups, AMD/ROCm, Apple Metal, and multi-GPU training.
+- Default dataset is `karpathy/tinystories-gpt4-clean` for consumer-GPU practicality.
+- `climbmix` remains available by explicit override (`uv run prepare.py --dataset climbmix --num-shards 10`).
+- Dataset changes reset metric comparability: TinyStories runs should not be compared directly to historical climbmix baselines.
 
 ## Notable forks
 
