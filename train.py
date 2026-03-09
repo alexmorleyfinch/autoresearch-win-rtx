@@ -458,7 +458,7 @@ class GPT(nn.Module):
         x = norm(x)
 
         softcap = 15
-        logits = self.lm_head(x)
+        logits = self.lm_head(x).float()
         logits = softcap * torch.tanh(logits / softcap)
 
         if targets is not None:
@@ -865,6 +865,13 @@ def _save_pre_eval_checkpoint(model):
         print(f"Warning: could not save pre-eval checkpoint: {exc}")
 
 
+def _restore_gc_after_attempt():
+    if hasattr(gc, "unfreeze"):
+        gc.unfreeze()
+    gc.enable()
+    gc.collect()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Autoresearch training script")
     parser.add_argument("--smoke-test", action="store_true", help="Run a short train/eval pass for validation.")
@@ -909,8 +916,9 @@ def main():
         except torch.cuda.OutOfMemoryError:
             print(f"Train OOM at batch_size={train_batch_size}; trying smaller batch.")
             torch.cuda.empty_cache()
-            gc.collect()
+            _restore_gc_after_attempt()
         except RuntimeError as exc:
+            _restore_gc_after_attempt()
             print(str(exc))
             return 1
 
