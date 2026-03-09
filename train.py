@@ -1214,11 +1214,13 @@ def main():
     print(f"Vocab size: {vocab_size:,}")
     print(f"Dataset: {tokenizer.dataset}")
 
+    # Configure optimizer kernels/dtypes before autotune so probes match real training runtime.
+    _configure_step_kernels(runtime)
+
     train_candidates = _build_train_candidates(runtime)
     autotuned_candidate = _autotune_train_candidate(runtime, tokenizer, vocab_size, train_candidates)
     train_candidates = _prioritize_autotuned_candidate(train_candidates, autotuned_candidate)
 
-    _configure_step_kernels(runtime)
     print(f"Attention backend: {runtime.attention_backend}")
     print(f"torch.compile: {'enabled' if USE_COMPILE else 'disabled'}")
 
