@@ -76,6 +76,7 @@ MIN_SUPPORTED_VRAM_GB_BY_ARCH = {
     "ada": 10.0,
     "blackwell": 10.0,
 }
+VRAM_FLOOR_TOLERANCE_GB = 0.05
 AUTOTUNE_WARMUP_STEPS = 2
 AUTOTUNE_MEASURE_STEPS = 3
 AUTOTUNE_MAX_MEMORY_FRACTION = 0.90
@@ -126,7 +127,12 @@ def _resolve_gpu_profile(gpu_name, capability, gpu_vram_gb, is_windows):
     min_vram_gb = MIN_SUPPORTED_VRAM_GB_BY_ARCH.get(arch, float("inf"))
     is_rtx = "rtx" in name
     is_laptop = "laptop" in name
-    supported_consumer = is_rtx and not is_laptop and arch is not None and gpu_vram_gb >= min_vram_gb
+    supported_consumer = (
+        is_rtx
+        and not is_laptop
+        and arch is not None
+        and gpu_vram_gb >= (min_vram_gb - VRAM_FLOOR_TOLERANCE_GB)
+    )
 
     if supported_consumer:
         if arch == "turing" and gpu_vram_gb < 12.0:
@@ -188,7 +194,7 @@ def _compatibility_warning(gpu_name, capability, gpu_vram_gb):
     if arch is None:
         return f"compute capability {capability[0]}.{capability[1]} is outside supported consumer tiers"
     min_vram_gb = MIN_SUPPORTED_VRAM_GB_BY_ARCH.get(arch, float("inf"))
-    if gpu_vram_gb < min_vram_gb:
+    if gpu_vram_gb < (min_vram_gb - VRAM_FLOOR_TOLERANCE_GB):
         return f"{gpu_vram_gb:.1f} GB VRAM is below the {min_vram_gb:g} GB floor for {arch}"
     return None
 
@@ -645,13 +651,15 @@ polar_express_coeffs = [
 
 def adamw_step_fused(p, grad, exp_avg, exp_avg_sq, step_t, lr_t, beta1_t, beta2_t, eps_t, wd_t):
     p.mul_(1 - lr_t * wd_t)
-    exp_avg.lerp_(grad, 1 - beta1_t)
-    exp_avg_sq.lerp_(grad.square(), 1 - beta2_t)
+    # Keep moments in their own dtype (float32 for fp16 params) to avoid grad^2 underflow.
+    g = grad.to(exp_avg.dtype)
+    exp_avg.lerp_(g, 1 - beta1_t)
+    exp_avg_sq.lerp_(g.square(), 1 - beta2_t)
     bias1 = 1 - beta1_t ** step_t
     bias2 = 1 - beta2_t ** step_t
     denom = (exp_avg_sq / bias2).sqrt() + eps_t
     step_size = lr_t / bias1
-    p.add_(exp_avg / denom, alpha=-step_size)
+    p.add_((exp_avg / denom * (-step_size)).to(p.dtype))
 
 
 def muon_step_fused(stacked_grads, stacked_params, momentum_buffer, second_momentum_buffer,
@@ -717,8 +725,9 @@ class MuonAdamW(torch.optim.Optimizer):
             state = self.state[p]
             if not state:
                 state["step"] = 0
-                state["exp_avg"] = torch.zeros_like(p)
-                state["exp_avg_sq"] = torch.zeros_like(p)
+                moment_dtype = torch.float32 if p.dtype == torch.float16 else p.dtype
+                state["exp_avg"] = torch.zeros_like(p, dtype=moment_dtype)
+                state["exp_avg_sq"] = torch.zeros_like(p, dtype=moment_dtype)
             state["step"] += 1
             self._adamw_step_t.fill_(state["step"])
             self._adamw_lr_t.fill_(group["lr"])
@@ -1026,7 +1035,18 @@ def _configure_step_kernels(runtime):
     global ADAMW_STEP_IMPL, MUON_STEP_IMPL, USE_COMPILE, MUON_COMPUTE_DTYPE
     ADAMW_STEP_IMPL = adamw_step_fused
     MUON_STEP_IMPL = muon_step_fused
-    MUON_COMPUTE_DTYPE = runtime.amp_dtype
+    if runtime.amp_dtype != torch.float16:
+        MUON_COMPUTE_DTYPE = runtime.amp_dtype
+        muon_reason = "matching AMP dtype"
+    elif torch.cuda.is_bf16_supported(including_emulation=True):
+        # Use bf16 for Muon orthogonalization when training runs in fp16 for better numeric headroom.
+        MUON_COMPUTE_DTYPE = torch.bfloat16
+        muon_reason = "fp16 AMP with bf16 support (native or emulated)"
+    else:
+        # Safety fallback when fp16 AMP is selected but bf16 isn't available in this runtime.
+        MUON_COMPUTE_DTYPE = torch.float32
+        muon_reason = "fp16 AMP without bf16 support; using fp32 fallback"
+    print(f"Muon compute dtype: {MUON_COMPUTE_DTYPE} ({muon_reason})")
     USE_COMPILE = False
 
 
