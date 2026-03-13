@@ -1,3 +1,1 @@
 commit	val_bpb	memory_gb	status	description
-b387540	0.901626	2.9	keep	baseline
-be9dac9	0.884846	2.9	keep	MATRIX_LR 0.04->0.05
