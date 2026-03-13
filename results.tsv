@@ -1,1 +1,3 @@
 commit	val_bpb	memory_gb	status	description
+ffc3d01	0.855121	3.4	keep	baseline (DEPTH=9 from mar13)
+62a4f30	0.883134	3.5	discard	DEPTH 9->10
