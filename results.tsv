@@ -55,3 +55,4 @@ bcf8a48	0.508987	2.6	discard	DEPTH 6->8 + ASPECT_RATIO 32->40
 a45d077	0.495146	2.3	keep	DEPTH 6->5
 463e882	0.495085	2.3	discard	ASPECT_RATIO 32->40 (same model_dim after rounding)
 453c923	0.510038	2.7	discard	ASPECT_RATIO 32->80 (model_dim 384 too slow)
+7eef3ad	0.492484	1.8	keep	Remove softcap (simpler + better)
