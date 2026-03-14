@@ -18,3 +18,5 @@ AGENTS.md
 
 # Experimental code/artifacts
 dev/
+
+checkpoint_pre_eval.pt
