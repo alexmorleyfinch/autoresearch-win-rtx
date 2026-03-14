@@ -593,7 +593,7 @@ class GPT(nn.Module):
                         params=chunk,
                         lr=matrix_lr,
                         momentum=0.95,
-                        ns_steps=5,
+                        ns_steps=7,
                         beta2=0.95,
                         weight_decay=weight_decay,
                     )
