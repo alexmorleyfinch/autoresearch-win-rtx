@@ -57,3 +57,4 @@ a45d077	0.495146	2.3	keep	DEPTH 6->5
 453c923	0.510038	2.7	discard	ASPECT_RATIO 32->80 (model_dim 384 too slow)
 7eef3ad	0.492484	1.8	keep	Remove softcap (simpler + better)
 70219b7	0.494470	1.8	discard	EMBEDDING_LR 1.0->1.5
+d1c0388	0.496204	1.8	discard	x0_lambdas init 0.1->0.05
