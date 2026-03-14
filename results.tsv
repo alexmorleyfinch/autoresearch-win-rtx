@@ -64,3 +64,4 @@ f34cd7f	0.490890	1.8	discard	WINDOW_PATTERN SLSL->L (all full context)
 6fe848a	0.491027	1.8	discard	DEVICE_BATCH_SIZE 16->32
 67c8a24	0.504870	1.8	discard	Muon ns_steps 5->3
 86541e2	0.490551	1.8	keep	Muon ns_steps 5->7
+6500a25	0.490564	1.8	discard	Muon ns_steps 7->9
