@@ -44,3 +44,4 @@ bb52055	0.541683	3.4	keep	MATRIX_LR 0.08->0.06
 abbc8ac	0.500572	2.3	discard	UNEMBEDDING_LR 0.01->0.02
 afa52bc	0.498152	2.3	discard	MLP expansion 4x->3x
 88d5223	0.501763	2.3	discard	WARMDOWN_RATIO 0.15->0.1
+ca33bfc	0.497138	2.3	keep	SCALAR_LR 0.5->1.0
