@@ -62,3 +62,4 @@ fc81892	0.490875	1.8	keep	MATRIX_LR 0.04->0.02
 ad76948	0.495826	1.8	discard	MATRIX_LR 0.02->0.01
 f34cd7f	0.490890	1.8	discard	WINDOW_PATTERN SLSL->L (all full context)
 6fe848a	0.491027	1.8	discard	DEVICE_BATCH_SIZE 16->32
+67c8a24	0.504870	1.8	discard	Muon ns_steps 5->3
