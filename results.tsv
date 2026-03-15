@@ -109,3 +109,11 @@ val_bpb	memory_gb	status	description
 0.489179	1.8	discard	FINAL_LR_FRAC 0.05->0.04
 0.488758	1.8	discard	ADAM_BETAS (0.8 0.95)->(0.8 0.92)
 0.488489	1.8	discard	WEIGHT_DECAY 0.1->0.09
+0.488286	1.8	discard	WINDOW_PATTERN LLSL->SLLL
+0.549342	1.6	discard	DEPTH 5->4
+0.490641	1.8	discard	Muon ns_steps 7->4
+0.497768	1.8	discard	WARMUP_RATIO 0.0->0.02
+0.488971	1.8	discard	FINAL_LR_FRAC 0.05->0.01
+0.488749	1.8	discard	gradient clip 1.0
+0.488971	1.8	discard	FINAL_LR_FRAC 0.05->0.01
+0.489062	1.8	discard	WARMDOWN_RATIO 0.18->0.19
