@@ -80,6 +80,7 @@ LOOP FOREVER:
 
 1. Look at the git state: the current branch/commit we're on
 2. Run `tail -n 50 results.tsv` and read `train.py` to suggest an experimental idea.
+2.1. if results are plateauing, use web search to get ml papers and ideas
 3. Make the change to `train.py`
 4. Run the experiment: `uv run train.py > run.log 2>&1` (redirect everything — do NOT use tee or let output flood your context)
 4. Read out the results: `grep "^val_bpb:\|^peak_vram_mb:" run.log`
