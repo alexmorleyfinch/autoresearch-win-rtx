@@ -802,12 +802,12 @@ WINDOW_PATTERN = "LLSL"   # sliding window pattern: L=full, S=half context
 TOTAL_BATCH_SIZE = 2 ** 16
 EMBEDDING_LR = 1.2
 UNEMBEDDING_LR = 0.01
-MATRIX_LR = 0.02
+MATRIX_LR = 0.019
 SCALAR_LR = 1.4
 WEIGHT_DECAY = 0.1
 ADAM_BETAS = (0.8, 0.95)
 WARMUP_RATIO = 0.0
-WARMDOWN_RATIO = 0.18
+WARMDOWN_RATIO = 0.22
 FINAL_LR_FRAC = 0.05
 
 # Model size + memory defaults
