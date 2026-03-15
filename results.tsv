@@ -91,5 +91,7 @@ val_bpb	memory_gb	status	description
 0.486677	1.8	keep	WARMDOWN_RATIO 0.18->0.2
 0.486677	1.8	discard	WARMDOWN_RATIO 0.2->0.22
 0.486160	1.8	keep	MATRIX_LR 0.02->0.019
+0.488881	1.8	discard	MATRIX_LR 0.019->0.02
+0.488881	1.8	discard	MATRIX_LR 0.019->0.02
 0.489338	1.8	discard	MATRIX_LR 0.019->0.017
 
