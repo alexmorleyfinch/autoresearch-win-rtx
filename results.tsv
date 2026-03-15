@@ -118,3 +118,38 @@ val_bpb	memory_gb	status	description
 0.489847	1.8	discard	Muon ns_steps 7->6
 0.493812	1.8	discard	ASPECT_RATIO 32->28
 0.512529	1.8	discard	HEAD_DIM 128->96
+0.488881	1.8	discard	MATRIX_LR 0.019->0.0193
+0.489234	1.8	discard	MATRIX_LR 0.019->0.0188
+0.488534	1.8	discard	EMBEDDING_LR 1.2->1.25
+0.488881	1.8	discard	SCALAR_LR 1.4->1.45
+0.489234	1.8	discard	UNEMBEDDING_LR 0.01->0.0095
+0.489025	1.8	discard	WARMDOWN_RATIO 0.18->0.17
+0.488534	1.8	discard	WARMDOWN_RATIO 0.18->0.19
+0.488534	1.8	discard	FINAL_LR_FRAC 0.05->0.055
+0.488881	1.8	discard	Muon init momentum 0.85->0.88
+0.489234	1.8	discard	Muon init momentum 0.85->0.82
+0.489025	1.8	discard	muon_group_chunk 8->4
+0.488881	1.8	discard	resid_params LR scale 0.01->0.012
+0.489338	1.8	discard	resid_params LR scale 0.01->0.008
+0.491338	1.8	discard	WINDOW_PATTERN LLSL->LLLS
+0.489847	1.8	discard	WINDOW_PATTERN LLSL->LLSS
+0.488534	1.8	discard	Muon momentum ramp 300->400
+0.489025	1.8	discard	Muon momentum ramp 300->200
+0.488881	1.8	discard	WEIGHT_DECAY schedule (1-progress)^1.5
+0.489338	1.8	discard	WEIGHT_DECAY schedule (1-progress)^0.5
+0.489338	1.8	discard	Muon matrix LR exponent 0.5->0.4
+0.488881	1.8	discard	Muon matrix LR exponent 0.5->0.6
+0.488534	1.8	discard	value_embeds LR 0.9x embedding
+0.488881	1.8	discard	value_embeds LR 1.1x embedding
+0.489847	1.8	discard	lm_head init std 0.001->0.0008
+0.489234	1.8	discard	lm_head init std 0.001->0.0015
+0.488881	1.8	discard	dmodel_lr_scale exponent -0.5->-0.48
+0.489338	1.8	discard	dmodel_lr_scale exponent -0.5->-0.52
+0.489338	1.8	discard	Muon matrix LR exponent 0.5->0.4
+0.488881	1.8	discard	Muon matrix LR exponent 0.5->0.6
+0.488534	1.8	discard	value_embeds LR 0.9x embedding
+0.488881	1.8	discard	value_embeds LR 1.1x embedding
+0.489847	1.8	discard	lm_head init std 0.001->0.0008
+0.489234	1.8	discard	lm_head init std 0.001->0.0015
+0.489338	1.8	discard	Muon matrix LR exponent 0.5->0.4
+0.488881	1.8	discard	Muon matrix LR exponent 0.5->0.6
