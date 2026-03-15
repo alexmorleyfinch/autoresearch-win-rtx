@@ -104,3 +104,4 @@ val_bpb	memory_gb	status	description
 0.491557	1.8	discard	WINDOW_PATTERN LLSL->LSLL
 0.489234	1.8	discard	WARMDOWN_RATIO 0.18->0.16
 0.489234	1.8	discard	MATRIX_LR 0.019->0.018
+0.489859	1.8	discard	MATRIX_LR 0.019->0.021
