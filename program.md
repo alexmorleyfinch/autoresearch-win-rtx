@@ -4,9 +4,6 @@ This is an experiment to have the LLM do its own research.
 
 Commit to master branch. If you start on the wrong branch, or if changes exist, stop executing immediately. Do not stash changes or continue.
 
-1. Run `git status` to check for early exit
-2. Read `results.tsv` (previous attempts)
-
 ## Experimentation
 
 Each experiment runs on a single GPU. The training script runs for a **fixed time budget of 5 minutes** (wall clock training time, excluding startup/compilation). You launch it simply as: `uv run train.py`.
@@ -50,7 +47,7 @@ grep "^val_bpb:" run.log
 
 ## Logging results
 
-When an experiment is done, log it to `results.tsv` (tab-separated, NOT comma-separated — commas break in descriptions).
+When an experiment is done, log all the results to a single line in `results.tsv`. One line per experiment (tab-separated, NOT comma-separated — commas break in descriptions).
 
 When keeping the code change, commit the code change **with** the appended result, otherwise just commit the discarded result to result.tsv
 
@@ -82,12 +79,13 @@ The experiment runs on master branch
 LOOP FOREVER:
 
 1. Look at the git state: the current branch/commit we're on
-2. Tune `train.py` with an experimental idea by directly hacking the code.
-3. Run the experiment: `uv run train.py > run.log 2>&1` (redirect everything — do NOT use tee or let output flood your context)
+2. Run `tail -n 50 results.tsv` and read `train.py` to suggest an experimental idea.
+3. Make the change to `train.py`
+4. Run the experiment: `uv run train.py > run.log 2>&1` (redirect everything — do NOT use tee or let output flood your context)
 4. Read out the results: `grep "^val_bpb:\|^peak_vram_mb:" run.log`
 5. If the grep output is empty, the run crashed. Run `tail -n 50 run.log` to read the Python stack trace and attempt a fix. If you can't get things to work after more than a few attempts, give up.
-6. If val_bpb improved (lower), you append results and commit the code change
-7. If val_bpb is equal or worse, you git reset back to where you started, append the discarded results and commit.
+6. If val_bpb improved (lower), you append one line representing the experiment results and commit the code change
+7. If val_bpb is equal or worse, git reset back, append one line representing the experiment results and commit.
 
 The idea is that you are a completely autonomous researcher trying things out. If they work, keep. If they don't, discard. And you're advancing the branch so that you can iterate. If you feel like you're getting stuck in some way, you can rewind but you should probably do this very very sparingly (if ever).
 
